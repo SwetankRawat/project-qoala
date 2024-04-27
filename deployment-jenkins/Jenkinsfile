@@ -1,0 +1,46 @@
+pipeline {
+    agent any
+    environment {
+        namespace = 'staging'
+        app_name = 'nginx-app'
+    }
+    stages {
+        stage("Checkout") {
+            when {
+                expression { params.action == 'Build' || params.action == 'Build and Deploy'}
+            }
+            steps {
+                checkout poll: false, scm: [$class: 'GitSCM', branches: [[name: '*/${value}']], doGenerateSubmoduleConfigurations: false, extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: '/var/lib/jenkins/workspace/service-process-workspace/$service/$env']], submoduleCfg: [], userRemoteConfigs: [[url: 'git@bitbucket.org:paytmteam/project-qoala.git']]]
+
+                }
+            }
+        }
+        stage('Build') {
+             when {
+                expression { params.action == 'Build' || params.action == 'Build and Deploy'}
+            }
+            steps {
+                sh '''
+                   set +e
+                   cd ${JENKINS_HOME}/workspace/service-process-workspace/$service/$env
+                   aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin 123.dkr.ecr.ap-south-1.amazonaws.com
+                   docker build -t 123.dkr.ecr.ap-south-1.amazonaws.com/nginx-app:$release . --network=host
+                   docker push 123.dkr.ecr.ap-south-1.amazonaws.com/nginx-app:$release
+                '''
+            }
+        }
+        stage('Deploy') {
+            when {
+                expression { params.action == 'Deploy' || params.action == 'Build and Deploy'}
+            }
+            steps {
+                sh '''
+                    set +e
+                    cd ${JENKINS_HOME}/workspace/deployment-pipeline/project-qoala/deployment
+                    git pull origin master
+                    kubectl apply -f deployment.yaml
+                   '''
+            }
+        }
+    }
+}
